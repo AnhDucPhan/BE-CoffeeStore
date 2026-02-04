@@ -15,6 +15,58 @@ model User {
   role      Role     @default(USER)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  cart      Cart?
+}
+
+model Product {
+  id          Int     @id @default(autoincrement())
+  name        String
+  slug        String  @unique
+  description String? @db.Text // Dùng Text thay vì Varchar giới hạn
+
+  // Decimal(10, 2) nghĩa là tối đa 10 chữ số, 2 số sau dấu phẩy
+  price Decimal @default(0) @db.Decimal(10, 2)
+
+  stock     Int     @default(0)
+  thumbnail String?
+
+  images String[]
+
+  isActive Boolean @default(true)
+
+  // Quan hệ với Category (nếu có)
+  // category    Category? @relation(fields: [categoryId], references: [id])
+  // categoryId  Int?
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  cartItems CartItem[]
+
+  @@map("products") // Tên bảng trong DB
+}
+
+// schema.prisma
+
+model Cart {
+  id        Int        @id @default(autoincrement())
+  userId    Int?       @unique // Có thể null nếu user chưa login (Guest)
+  user      User?      @relation(fields: [userId], references: [id])
+  items     CartItem[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+}
+
+model CartItem {
+  id        Int      @id @default(autoincrement())
+  cartId    Int
+  cart      Cart     @relation(fields: [cartId], references: [id])
+  productId Int
+  product   Product  @relation(fields: [productId], references: [id])
+  quantity  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([cartId, productId]) // Một giỏ hàng chỉ chứa 1 dòng cho mỗi sản phẩm (tránh trùng lặp)
 }
 
 enum Role {

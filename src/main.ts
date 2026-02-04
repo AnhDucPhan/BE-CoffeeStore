@@ -5,7 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { cors: true });
+  const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT') || 4000;
   app.enableCors({
@@ -18,6 +18,9 @@ async function bootstrap() {
       whitelist: true, // loại bỏ field thừa
       forbidNonWhitelisted: true,
       transform: true,
+      transformOptions: {
+        enableImplicitConversion: true, // 👈 Dòng này giúp tự ép kiểu string -> number ở DTO
+      },
     }),
   );
   app.useGlobalFilters(new AllExceptionsFilter());

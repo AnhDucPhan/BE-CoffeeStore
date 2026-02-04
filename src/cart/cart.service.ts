@@ -6,8 +6,8 @@ import { AddToCartDto } from './dto/add-to-cart.dto';
 export class CartService {
   constructor(private prisma: PrismaService) {}
 
-  async addToCart(dto: AddToCartDto) {
-    const { userId, productId, quantity } = dto;
+  async addToCart(dto: AddToCartDto, userId: number) {
+    const { productId, quantity } = dto;
 
     // 1. Kiểm tra sản phẩm
     const product = await this.prisma.product.findUnique({ where: { id: productId } });

@@ -65,4 +65,25 @@ export class CartService {
           }
       })
   }
+
+
+  async removeCartItem(itemId: number, userId: number) {
+    const cartItem=await this.prisma.cartItem.findFirst({
+        where:{
+            id:itemId,
+            cart: { 
+                userId: userId
+
+            }
+        }
+    });
+    if(!cartItem){
+        throw new NotFoundException('Sản phẩm không tồn tại trong giỏ hàng của bạn');
+    }
+    await this.prisma.cartItem.delete({
+        where:{id:itemId}
+    });
+    return {message:'Xoá sản phẩm khỏi giỏ hàng thành công'};
+
+  }
 }

@@ -5,10 +5,13 @@ import { UploadApiResponse, UploadApiErrorResponse } from 'cloudinary';
 
 @Injectable()
 export class CloudinaryService {
-    async uploadImage(file: Express.Multer.File): Promise<UploadApiResponse | UploadApiErrorResponse> {
+    async uploadImage(file: Express.Multer.File, folderName: string): Promise<UploadApiResponse | UploadApiErrorResponse> {
         return new Promise((resolve, reject) => {
             const upload = cloudinary.uploader.upload_stream(
-                { folder: 'products' }, // Tự động tạo folder 'products' trên Cloudinary
+                {
+                    folder: folderName,
+                    resource_type: 'auto'
+                }, // Tự động tạo folder 'products' trên Cloudinary
                 (error, result) => {
                     if (error) return reject(error);
                     resolve(result);

@@ -22,4 +22,16 @@ export class CreateUserDto {
   @IsOptional()
   @IsEnum(Role)
   role?: Role;
+
+  @IsString()
+  @IsNotEmpty({ message: 'Password ko the de trong' })
+  phoneNumber: string;
+
+  @IsOptional()
+  @IsString()
+  address: string;
+
+  @IsString()
+  @IsOptional()
+  avatar?: string;
 }

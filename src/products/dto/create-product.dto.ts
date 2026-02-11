@@ -41,7 +41,7 @@ export class CreateProductDto {
 
   // 5. Ảnh đại diện (Đây là cái bạn đang thiếu lúc nãy)
   @ApiPropertyOptional({ type: 'string', format: 'binary', description: 'File ảnh upload' })
-  @IsOptional() 
+  @IsNotEmpty({ message: 'Tên sản phẩm không được để trống' })
   @IsString()
   thumbnail?: string; // 👈 Để Optional vì lúc submit form chưa có URL, Controller mới gán vào
 

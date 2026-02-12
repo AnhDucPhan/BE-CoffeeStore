@@ -45,17 +45,14 @@ export class CreateProductDto {
   @IsString()
   thumbnail?: string; // 👈 Để Optional vì lúc submit form chưa có URL, Controller mới gán vào
 
-  // 6. Danh mục (ID)
   @ApiPropertyOptional({ example: 1, description: 'ID của danh mục cha' })
   @IsOptional()
   @Type(() => Number) // 👈 Ép kiểu ID về số
   @IsNumber()
   categoryId?: number;
 
-  // 7. Trạng thái hiển thị (Active)
   @ApiPropertyOptional({ example: true, default: true })
   @IsOptional()
-  // Transform này giúp convert chuỗi "true"/"false" từ form-data thành boolean thật
   @Transform(({ value }) => {
     if (value === 'true') return true;
     if (value === 'false') return false;

@@ -13,14 +13,15 @@ export class AuthService {
 
   async validateUser(email: string, password: string) {
     const user = await this.usersService.findByEmail(email);
-    if (!user) throw new UnauthorizedException('User not found');
+    if (user && user.status !== 'Active') { 
+       throw new UnauthorizedException("Tài khoản đang bị khóa (Inactive)!");
+    }
+    if (user && (await bcrypt.compare(password, user.password))) {
+      const { password, ...result } = user;
+      return result;
+    }
 
-    const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) throw new UnauthorizedException('Wrong password');
-
-    // Xóa password khỏi kết quả trả về
-    const { password: _, ...result } = user;
-    return result;
+    return null;
   }
 
   async login(user: any) {

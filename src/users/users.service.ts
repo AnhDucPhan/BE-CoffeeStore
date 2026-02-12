@@ -17,6 +17,7 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({
       where: { email },
     });
+    
     return user;
   }
 
@@ -55,6 +56,7 @@ export class UsersService {
         phoneNumber: true,
         address: true,
         avatar: true,
+        status: true,
       },
     });
   }
@@ -62,13 +64,11 @@ export class UsersService {
     // 1. Chuẩn bị object data để update
     // Loại bỏ các field undefined/null để tránh Prisma update đè giá trị rỗng
     const dataToUpdate: any = { ...updateUserDto };
-
     // 2. Xử lý Avatar (Nếu có file mới)
     if (file) {
       // Lưu đường dẫn file hoặc tên file tùy cấu hình Multer của bạn
       dataToUpdate.avatar = file.filename;
     }
-
     // 3. Xử lý Password (Nếu có gửi password mới lên)
     if (dataToUpdate.password) {
       const salt = await bcrypt.genSalt();

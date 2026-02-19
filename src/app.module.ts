@@ -7,9 +7,10 @@ import { PrismaModule } from 'src/prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { ProductsModule } from './products/products.module';
 import { CartModule } from './cart/cart.module';
+import { ScheduleModule } from './schedule/schedule.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), UsersModule, PrismaModule, AuthModule, ProductsModule, CartModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), UsersModule, PrismaModule, AuthModule, ProductsModule, CartModule, ScheduleModule],
   controllers: [AppController],
   providers: [AppService],
 })

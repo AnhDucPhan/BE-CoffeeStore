@@ -66,8 +66,15 @@ export class UsersService {
     const dataToUpdate: any = { ...updateUserDto };
     // 2. Xử lý Avatar (Nếu có file mới)
     if (file) {
-      // Lưu đường dẫn file hoặc tên file tùy cấu hình Multer của bạn
-      dataToUpdate.avatar = file.filename;
+      try {
+        // Truyền file và tên thư mục (VD: 'avatars')
+        const uploadResult = await this.cloudinaryService.uploadImage(file, 'avatars');
+        
+        // Lấy đường dẫn URL an toàn trả về từ Cloudinary lưu vào DB
+        dataToUpdate.avatar = uploadResult.secure_url; 
+      } catch (error) {
+        throw new BadRequestException('Upload ảnh lên Cloudinary thất bại!');
+      }
     }
     // 3. Xử lý Password (Nếu có gửi password mới lên)
     if (dataToUpdate.password) {

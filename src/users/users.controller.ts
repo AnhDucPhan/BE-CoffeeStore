@@ -26,6 +26,8 @@ export class UsersController {
         @Body() updateUserDto: UpdateUserDto,
         @UploadedFile() file: Express.Multer.File,
     ) {
+        console.log("1. DTO (Text):", updateUserDto);
+        console.log("2. File (Image):", file);
         return this.usersService.update(id, updateUserDto, file);
     }
 

@@ -8,19 +8,20 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  email     String   @unique
-  password  String
-  name      String?
-  role      Role     @default(USER)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  phoneNumber   String  // Dấu ? nghĩa là được phép để trống (NULL) dưới DB
-  address       String?
-  status        String   @default("Active") // Mặc định là 'Active' nếu không nhập
-  avatar        String?
-  cart      Cart?
-  
+  id          Int      @id @default(autoincrement())
+  email       String   @unique
+  password    String
+  name        String?
+  role        Role     @default(USER)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  phoneNumber String // Dấu ? nghĩa là được phép để trống (NULL) dưới DB
+  address     String?
+  status      String   @default("Active") // Mặc định là 'Active' nếu không nhập
+  avatar      String?
+  cart        Cart?
+
+  workSchedules WorkSchedule[]
 }
 
 enum Role {
@@ -76,9 +77,22 @@ model CartItem {
   quantity  Int      @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
 
   @@unique([cartId, productId]) // Một giỏ hàng chỉ chứa 1 dòng cho mỗi sản phẩm (tránh trùng lặp)
 }
 
+model WorkSchedule {
+  id Int @id @default(autoincrement())
 
+  startTime DateTime
+  endTime   DateTime
+
+  status String  @default("PENDING") // PENDING, APPROVED, REJECTED
+  note   String?
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}

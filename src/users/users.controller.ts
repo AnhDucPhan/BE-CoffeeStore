@@ -1,24 +1,28 @@
-import { Body, Controller, Post, Get, Patch, Param, Delete, UseInterceptors, ParseIntPipe, UploadedFile } from '@nestjs/common';
+import { Body, Controller, Post, Get, Patch, Param, Delete, UseInterceptors, ParseIntPipe, UploadedFile, UseGuards } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { ApiOperation, ApiParam, ApiResponse } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 
 @Controller('users')
 export class UsersController {
     constructor(private readonly usersService: UsersService) { }
     @UseInterceptors(FileInterceptor('avatar'))
     @Post()
+    @UseGuards(JwtAuthGuard)
     create(@Body() body: CreateUserDto) {
         return this.usersService.create(body);
     }
 
+    @UseGuards(JwtAuthGuard)
     @Get()
     findAll() {
         return this.usersService.findAll();
     }
 
+    @UseGuards(JwtAuthGuard)
     @Patch(':id')
     @UseInterceptors(FileInterceptor('avatar')) // Nhận key 'avatar' từ FormData
     update(
@@ -31,6 +35,7 @@ export class UsersController {
         return this.usersService.update(id, updateUserDto, file);
     }
 
+    @UseGuards(JwtAuthGuard)
     @Delete(':id')
     @ApiOperation({ summary: 'Xóa người dùng theo ID' })
     @ApiParam({ name: 'id', description: 'ID người dùng cần xóa', example: 1 })

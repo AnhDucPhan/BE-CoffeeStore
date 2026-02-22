@@ -12,11 +12,9 @@ export class ScheduleController {
   @Post()
   create(@Request() req, @Body() dto: CreateScheduleDto) {
 
-    const userId = req.user.userId;
+    const targetUserId = dto.userId ? dto.userId : req.user.userId;
 
-    console.log("UserID chuẩn bị gửi xuống Service:", userId); // Debug xem ra số 5 chưa
-
-    return this.schedulesService.create(userId, dto);
+    return this.schedulesService.create(targetUserId, dto);
   }
 
   @UseGuards(JwtAuthGuard)

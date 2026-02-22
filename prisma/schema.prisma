@@ -19,6 +19,7 @@ model User {
   address     String?
   status      String   @default("Active") // Mặc định là 'Active' nếu không nhập
   avatar      String?
+  position    String?
   cart        Cart?
 
   workSchedules WorkSchedule[]

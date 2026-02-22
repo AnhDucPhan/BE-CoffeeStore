@@ -1,15 +1,20 @@
-import { IsDateString, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsDateString, IsNotEmpty, IsOptional, IsString, IsNumber } from 'class-validator';
 
 export class CreateScheduleDto {
-  @IsNotEmpty()
-  @IsDateString()
-  startTime: string; // VD: "2023-10-25T08:00:00.000Z"
+  // 👇 Thêm trường này: Không bắt buộc (Vì nếu user tự đăng ký thì không cần truyền)
+  @IsOptional()
+  @IsNumber()
+  userId?: number;
 
   @IsNotEmpty()
   @IsDateString()
-  endTime: string;   // VD: "2023-10-25T12:00:00.000Z"
+  startTime: string;
 
-  @IsOptional() // Không bắt buộc (có thể để trống)
-  @IsString()   // Phải là chuỗi
+  @IsNotEmpty()
+  @IsDateString()
+  endTime: string;
+
+  @IsOptional()
+  @IsString()
   note?: string;
 }

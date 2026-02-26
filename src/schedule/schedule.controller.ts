@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Request, Query, ParseIntPipe } from '@nestjs/common';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { SchedulesService } from './schedule.service';
@@ -19,9 +19,11 @@ export class ScheduleController {
 
   @UseGuards(JwtAuthGuard)
   @Get()
-  findAll(@Request() req) {
-    const userId = req.user.userId;
-    return this.schedulesService.findAll(userId);
+  findAll(
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string
+  ) {
+    return this.schedulesService.findAll(startDate, endDate);
   }
 
   // @Get(':id')
@@ -29,13 +31,16 @@ export class ScheduleController {
   //   return this.schedulesService.findOne(+id);
   // }
 
-  // @Patch(':id')
-  // update(@Param('id') id: string, @Body() updateScheduleDto: UpdateScheduleDto) {
-  //   return this.schedulesService.update(+id, updateScheduleDto);
-  // }
+  @Patch(':id')
+  async update(
+    @Param('id', ParseIntPipe) id: number, // Dùng ParseIntPipe để đảm bảo id là số
+    @Body() updateScheduleDto: UpdateScheduleDto,
+  ) {
+    return this.schedulesService.update(id, updateScheduleDto);
+  }
 
-  // @Delete(':id')
-  // remove(@Param('id') id: string) {
-  //   return this.schedulesService.remove(+id);
-  // }
+  @Delete(':id')
+  async remove(@Param('id', ParseIntPipe) id: number) {
+    return this.schedulesService.remove(id);
+  }
 }

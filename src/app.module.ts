@@ -8,9 +8,10 @@ import { AuthModule } from './auth/auth.module';
 import { ProductsModule } from './products/products.module';
 import { CartModule } from './cart/cart.module';
 import { ScheduleModule } from './schedule/schedule.module';
+import { NotificationModule } from './notification/notification.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), UsersModule, PrismaModule, AuthModule, ProductsModule, CartModule, ScheduleModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), UsersModule, PrismaModule, AuthModule, ProductsModule, CartModule, ScheduleModule, NotificationModule],
   controllers: [AppController],
   providers: [AppService],
 })

@@ -57,7 +57,11 @@ export class UsersService {
         address: true,
         avatar: true,
         status: true,
+        position: true,
       },
+      orderBy: [
+        { createdAt: 'asc' },
+      ], 
     });
   }
   async update(id: number, updateUserDto: UpdateUserDto, file?: Express.Multer.File) {

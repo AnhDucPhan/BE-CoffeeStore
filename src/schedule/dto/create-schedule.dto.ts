@@ -17,4 +17,8 @@ export class CreateScheduleDto {
   @IsOptional()
   @IsString()
   note?: string;
+
+  @IsOptional() 
+  @IsNumber()
+  settingId?: number; 
 }

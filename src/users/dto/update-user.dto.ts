@@ -8,4 +8,7 @@ export class UpdateUserDto extends PartialType(CreateUserDto) {
     @IsString()
     // Nếu muốn chặt chẽ thì dùng @IsIn(["Active", "Inactive"])
     status?: string;
+
+    @IsString()
+    position?: string;
 }

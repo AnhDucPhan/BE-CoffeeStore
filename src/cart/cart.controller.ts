@@ -21,7 +21,6 @@ export class CartController {
   @UseGuards(JwtAuthGuard)
   @Get()
   getCart(@User() user: any) {
-    // Ép kiểu userId về number
     return this.cartService.getCart(Number(user.userId));
   }
 
@@ -32,5 +31,13 @@ export class CartController {
     @User() user: any
   ){
     return this.cartService.removeCartItem(itemId, Number(user.userId));
+  }
+
+  // Xóa toàn bộ sản phẩm trong giỏ hàng
+  @UseGuards(JwtAuthGuard)
+  @Delete('clear')
+  async clearCart(@User() user: any) {
+    console.log(`🧹 Đang tiến hành dọn sạch giỏ hàng cho User ID: ${user.userId}`);
+    return this.cartService.clearCart(Number(user.userId));
   }
 }

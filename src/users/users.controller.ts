@@ -1,4 +1,4 @@
-import { Body, Controller, Post, Get, Patch, Param, Delete, UseInterceptors, ParseIntPipe, UploadedFile, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Get, Patch, Param, Delete, UseInterceptors, ParseIntPipe, UploadedFile, UseGuards, Request, Query } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
@@ -9,17 +9,31 @@ import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 @Controller('users')
 export class UsersController {
     constructor(private readonly usersService: UsersService) { }
-    @UseInterceptors(FileInterceptor('avatar'))
+
     @Post()
-    @UseGuards(JwtAuthGuard)
-    create(@Body() body: CreateUserDto) {
-        return this.usersService.create(body);
+    @UseInterceptors(FileInterceptor('avatar'))
+    async create(
+        @Body() createUserDto: CreateUserDto,
+        @Request() req: any,
+        @UploadedFile() file?: Express.Multer.File,
+    ) {
+        // Truyền thêm req.user.role xuống tham số thứ 3 của hàm create
+        return this.usersService.create(createUserDto, file, req.user?.role);
     }
 
     @UseGuards(JwtAuthGuard)
     @Get()
-    findAll() {
-        return this.usersService.findAll();
+    async findAll(
+        @Query('page') page?: string,
+        @Query('perPage') perPage?: string,
+        @Query('role') role?: string,     // 👈 Hứng role
+        @Query('status') status?: string, // 👈 Hứng status
+    ) {
+        const pageNumber = page ? Number(page) : 1;
+        const itemsPerPage = perPage ? Number(perPage) : 10;
+
+        // Truyền đúng 4 tham số: page, perPage, role, status
+        return this.usersService.findAll(pageNumber, itemsPerPage, role, status);
     }
 
     @UseGuards(JwtAuthGuard)
@@ -47,12 +61,27 @@ export class UsersController {
         return this.usersService.delete(id);
     }
 
-    // src/users/users.controller.ts
+    @Get('search')
+    async searchUsers(
+        @Query('q') q?: string,
+        @Query('page') page?: string,
+        @Query('perPage') perPage?: string,
+        @Query('role') role?: string,     // 👈 Hứng role
+        @Query('status') status?: string, // 👈 Hứng status
+    ) {
+        const pageNumber = page ? Number(page) : 1;
+        const perPageNumber = perPage ? Number(perPage) : 10;
+        const searchTerm = q || '';
 
+        // Truyền đúng 5 tham số: searchTerm, page, perPage, role, status
+        return this.usersService.searchUsers(searchTerm, pageNumber, perPageNumber, role, status);
+    }
 
-
+    @UseGuards(JwtAuthGuard)
     @Get(':id')
     findOne(@Param('id', ParseIntPipe) id: number) {
         return this.usersService.findOne(id);
     }
+
+
 }

@@ -32,7 +32,8 @@ export class ScheduleController {
   //   return this.schedulesService.findOne(+id);
   // }
 
- @Patch('publish')
+  @UseGuards(JwtAuthGuard)
+  @Patch('publish')
   async publishSchedules(
     @Body('scheduleIds') scheduleIds: number[],
     @Body('startDate') startDate: string, // Lấy thêm startDate
@@ -40,11 +41,12 @@ export class ScheduleController {
   ) {
     // Truyền sang service
     const publishedSchedules = await this.schedulesService.publishSchedules(scheduleIds, startDate, endDate);
-    
+
     await this.notificationService.notifyStaffPublishedSchedules(publishedSchedules);
     return { success: true, message: `Đã công bố thành công!` };
   }
 
+  @UseGuards(JwtAuthGuard)
   @Patch(':id')
   async update(
     @Param('id', ParseIntPipe) id: number, // Dùng ParseIntPipe để đảm bảo id là số
@@ -53,11 +55,13 @@ export class ScheduleController {
     return this.schedulesService.update(id, updateScheduleDto);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Delete(':id')
   async remove(@Param('id', ParseIntPipe) id: number) {
     return this.schedulesService.remove(id);
   }
 
+  @UseGuards(JwtAuthGuard)
   @Post('open-setting')
   async openScheduleSetting(
     @Body('closeTime') closeTime: string,
@@ -81,5 +85,6 @@ export class ScheduleController {
     };
   }
 
-  
+ 
+
 }

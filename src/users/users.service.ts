@@ -5,6 +5,17 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { PaginatedResult, paginator } from 'src/common/helpers/paginator';
+
+
+const SALARY_MAP: Record<string, number> = {
+  "Store Manager": 45000,
+  "Shift Manager": 35000,
+  "Senior Barista": 30000,
+  "Barista": 25000,
+}
+
+const paginate = paginator({ perPage: 10 });
 
 @Injectable()
 export class UsersService {
@@ -17,11 +28,11 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({
       where: { email },
     });
-    
+
     return user;
   }
 
-  async create(data: Prisma.UserCreateInput, file?: Express.Multer.File) {
+  async create(data: Prisma.UserCreateInput, file?: Express.Multer.File, creatorRole?: string) {
     const existingEmail = await this.findByEmail(data.email);
     if (existingEmail) {
       throw new BadRequestException('Email đã tồn tại');
@@ -29,41 +40,73 @@ export class UsersService {
     let avatarUrl = data.avatar;
 
     if (file) {
-      // 👇 Truyền 'users' để ảnh chui vào folder users trên Cloudinary
       const result = await this.cloudinaryService.uploadImage(file, 'users');
       avatarUrl = result.secure_url;
     }
 
-    const hashedPass = await bcrypt.hash(data.password, 10)
+    const hashedPass = await bcrypt.hash(data.password, 10);
+
+    const autoSalary = data.position ? (SALARY_MAP[data.position] || 25000) : 25000;
+
+    // 👇 LOGIC PHÂN QUYỀN TỰ ĐỘNG VÀ BẢO MẬT 👇
+    let finalRole = data.role ?? 'USER'; // Mặc định là USER nếu không gửi gì
+
+    // Nếu người tạo là MANAGER -> Ép cứng tài khoản mới phải là STAFF 
+    // (Bỏ qua data.role họ gửi từ Frontend lên để tránh hack)
+    if (creatorRole === 'MANAGER') {
+      finalRole = 'STAFF';
+    }
+
     return this.prisma.user.create({
       data: {
         ...data,
         password: hashedPass,
-        role: data.role ?? 'USER',
+        role: finalRole, // 👈 Gắn finalRole vào đây
         avatar: avatarUrl,
+        hourlyRate: autoSalary, 
       }
     });
   }
 
-  findAll() {
-    return this.prisma.user.findMany({
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        role: true,
-        createdAt: true,
-        phoneNumber: true,
-        address: true,
-        avatar: true,
-        status: true,
-        position: true,
+  async findAll(
+    page: number = 1, 
+    perPage: number = 10,
+    roleFilter?: string,     // 👈 Thêm tham số lọc chức vụ
+    statusFilter?: string    // 👈 Thêm tham số lọc trạng thái
+  ): Promise<PaginatedResult<any>> {
+    
+    // 1. Tạo điều kiện Where cơ bản (Mặc định lấy STAFF và MANAGER)
+    const where: Prisma.UserWhereInput = {
+      role: { in: ['STAFF', 'MANAGER'] },
+    };
+
+    // 2. Thêm điều kiện lọc Role (nếu có)
+    // Giả sử Frontend truyền lên 'Store Manager' hoặc 'Barista'
+    if (roleFilter) {
+      where.position = roleFilter; 
+    }
+
+    // 3. Thêm điều kiện lọc Status (nếu có)
+    // Giả sử Frontend truyền lên 'Active' hoặc 'Inactive'
+    if (statusFilter) {
+      where.status = statusFilter;
+    }
+
+    return paginate(
+      this.prisma.user,
+      {
+        where, // 👈 Truyền cục Where đã được "nạp" điều kiện vào đây
+        select: {
+          id: true, email: true, name: true, role: true, createdAt: true,
+          phoneNumber: true, address: true, avatar: true, status: true, position: true,
+        },
+        orderBy: [{ createdAt: 'asc' }],
       },
-      orderBy: [
-        { createdAt: 'asc' },
-      ], 
-    });
+      { page, perPage } 
+    );
   }
+
+  
   async update(id: number, updateUserDto: UpdateUserDto, file?: Express.Multer.File) {
     // 1. Chuẩn bị object data để update
     // Loại bỏ các field undefined/null để tránh Prisma update đè giá trị rỗng
@@ -73,9 +116,9 @@ export class UsersService {
       try {
         // Truyền file và tên thư mục (VD: 'avatars')
         const uploadResult = await this.cloudinaryService.uploadImage(file, 'avatars');
-        
+
         // Lấy đường dẫn URL an toàn trả về từ Cloudinary lưu vào DB
-        dataToUpdate.avatar = uploadResult.secure_url; 
+        dataToUpdate.avatar = uploadResult.secure_url;
       } catch (error) {
         throw new BadRequestException('Upload ảnh lên Cloudinary thất bại!');
       }
@@ -132,5 +175,47 @@ export class UsersService {
     // Loại bỏ password cho an toàn
     const { password, ...result } = user;
     return result;
+  }
+
+  async searchUsers(
+    searchTerm: string, 
+    page: number, 
+    perPage: number,
+    roleFilter?: string,    // 👈 Thêm tham số lọc chức vụ
+    statusFilter?: string   // 👈 Thêm tham số lọc trạng thái
+  ): Promise<PaginatedResult<any>> {
+    
+    // 1. Khai báo điều kiện tìm kiếm (Tên hoặc Email)
+    const where: Prisma.UserWhereInput = searchTerm
+      ? {
+          OR: [
+            { name: { contains: searchTerm, mode: 'insensitive' as const } },
+            { email: { contains: searchTerm, mode: 'insensitive' as const } },
+          ],
+        }
+      : {};
+
+    // 2. Thêm điều kiện lọc Role (nếu có)
+    if (roleFilter) {
+      where.position = roleFilter;
+    }
+
+    // 3. Thêm điều kiện lọc Status (nếu có)
+    if (statusFilter) {
+      where.status = statusFilter;
+    }
+
+    return paginate(
+      this.prisma.user,
+      {
+        where, // 👈 Truyền cục Where tổng hợp vào
+        select: {
+          id: true, name: true, email: true, avatar: true, position: true, 
+          hourlyRate: true, status: true, // Nhớ lấy thêm status để trả về FE
+        },
+        orderBy: { name: 'asc' },
+      },
+      { page, perPage }
+    );
   }
 }

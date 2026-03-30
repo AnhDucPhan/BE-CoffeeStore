@@ -8,95 +8,95 @@ import { ApprovalStatus, Role } from '@prisma/client';
 export class SchedulesService {
   constructor(private prisma: PrismaService) { }
 
-  async create(creatorId: number, dto: CreateScheduleDto) {
-    const creator = await this.prisma.user.findUnique({
-      where: { id: creatorId },
-      select: { role: true }
-    });
-
-    if (!creator) {
-      throw new BadRequestException('Người dùng không tồn tại!');
-    }
-
-    const targetUserId = creator.role === Role.STAFF ? creatorId : (dto.userId || creatorId);
-    const finalStatus = creator.role === Role.MANAGER ? 'APPROVED' : 'PENDING';
-
-    const start = new Date(dto.startTime);
-    const end = new Date(dto.endTime);
-
-    // CHỈ KIỂM TRA LUẬT NẾU LÀ STAFF
-    if (creator.role === Role.STAFF) {
-      if (!dto.settingId) {
-        throw new BadRequestException('Thiếu mã đợt đăng ký ca làm!');
-      }
-
-      // 1. CHỈ CÓ DUY NHẤT 1 LẦN TÌM KIẾM BẰNG dto.settingId
-      const setting = await this.prisma.scheduleSetting.findUnique({
-        where: { id: dto.settingId }
+    async create(creatorId: number, dto: CreateScheduleDto) {
+      const creator = await this.prisma.user.findUnique({
+        where: { id: creatorId },
+        select: { role: true }
       });
 
-      // 2. KIỂM TRA ĐÓNG CỔNG BẰNG ĐÚNG CÁI SETTING VỪA TÌM
-      if (!setting || !setting.isOpen) {
-        throw new BadRequestException('Cổng đăng ký ca làm hiện đang ĐÓNG!');
+      if (!creator) {
+        throw new BadRequestException('Người dùng không tồn tại!');
       }
 
-      // 3. KIỂM TRA QUÁ HẠN
-      const now = new Date();
-      if (setting.closeTime && now > setting.closeTime) {
-        await this.prisma.scheduleSetting.update({
-          where: { id: dto.settingId },
-          data: { isOpen: false }
+      const targetUserId = creator.role === Role.STAFF ? creatorId : (dto.userId || creatorId);
+      const finalStatus = creator.role === Role.MANAGER ? 'APPROVED' : 'PENDING';
+
+      const start = new Date(dto.startTime);
+      const end = new Date(dto.endTime);
+
+      // CHỈ KIỂM TRA LUẬT NẾU LÀ STAFF
+      if (creator.role === Role.STAFF) {
+        if (!dto.settingId) {
+          throw new BadRequestException('Thiếu mã đợt đăng ký ca làm!');
+        }
+
+        // 1. CHỈ CÓ DUY NHẤT 1 LẦN TÌM KIẾM BẰNG dto.settingId
+        const setting = await this.prisma.scheduleSetting.findUnique({
+          where: { id: dto.settingId }
         });
-        throw new BadRequestException('Đã quá thời hạn đăng ký ca làm!');
+
+        // 2. KIỂM TRA ĐÓNG CỔNG BẰNG ĐÚNG CÁI SETTING VỪA TÌM
+        if (!setting || !setting.isOpen) {
+          throw new BadRequestException('Cổng đăng ký ca làm hiện đang ĐÓNG!');
+        }
+
+        // 3. KIỂM TRA QUÁ HẠN
+        const now = new Date();
+        if (setting.closeTime && now > setting.closeTime) {
+          await this.prisma.scheduleSetting.update({
+            where: { id: dto.settingId },
+            data: { isOpen: false }
+          });
+          throw new BadRequestException('Đã quá thời hạn đăng ký ca làm!');
+        }
+
+        // 4. KIỂM TRA NGÀY HỢP LỆ
+        if (setting.shiftStartDate && start < setting.shiftStartDate) {
+          const startDateStr = setting.shiftStartDate.toLocaleDateString('vi-VN');
+          throw new BadRequestException(`Bạn chỉ được đăng ký ca làm diễn ra từ ngày ${startDateStr} trở đi!`);
+        }
+
+        if (setting.shiftEndDate && end > setting.shiftEndDate) {
+          const endDateStr = setting.shiftEndDate.toLocaleDateString('vi-VN');
+          throw new BadRequestException(`Bạn chỉ được đăng ký ca làm diễn ra đến hết ngày ${endDateStr}!`);
+        }
       }
 
-      // 4. KIỂM TRA NGÀY HỢP LỆ
-      if (setting.shiftStartDate && start < setting.shiftStartDate) {
-        const startDateStr = setting.shiftStartDate.toLocaleDateString('vi-VN');
-        throw new BadRequestException(`Bạn chỉ được đăng ký ca làm diễn ra từ ngày ${startDateStr} trở đi!`);
+      // KIỂM TRA TRÙNG GIỜ CA LÀM
+      if (start >= end) {
+        throw new BadRequestException("Thời gian kết thúc phải sau thời gian bắt đầu");
       }
 
-      if (setting.shiftEndDate && end > setting.shiftEndDate) {
-        const endDateStr = setting.shiftEndDate.toLocaleDateString('vi-VN');
-        throw new BadRequestException(`Bạn chỉ được đăng ký ca làm diễn ra đến hết ngày ${endDateStr}!`);
+      const existingSchedule = await this.prisma.workSchedule.findFirst({
+        where: {
+          userId: targetUserId,
+          AND: [
+            { startTime: { lt: end } },
+            { endTime: { gt: start } },
+          ],
+        },
+      });
+
+      if (existingSchedule) {
+        throw new BadRequestException(
+          creator.role === Role.STAFF
+            ? `Bạn đã có ca làm trùng vào khoảng thời gian này!`
+            : `Nhân viên này đã có ca làm trùng vào khoảng thời gian này!`
+        );
       }
+
+      // TẠO CA LÀM XUỐNG DB
+      return this.prisma.workSchedule.create({
+        data: {
+          userId: targetUserId,
+          startTime: start,
+          endTime: end,
+          note: dto.note,
+          status: finalStatus,
+          settingId: creator.role === Role.STAFF ? dto.settingId : null,
+        },
+      });
     }
-
-    // KIỂM TRA TRÙNG GIỜ CA LÀM
-    if (start >= end) {
-      throw new BadRequestException("Thời gian kết thúc phải sau thời gian bắt đầu");
-    }
-
-    const existingSchedule = await this.prisma.workSchedule.findFirst({
-      where: {
-        userId: targetUserId,
-        AND: [
-          { startTime: { lt: end } },
-          { endTime: { gt: start } },
-        ],
-      },
-    });
-
-    if (existingSchedule) {
-      throw new BadRequestException(
-        creator.role === Role.STAFF
-          ? `Bạn đã có ca làm trùng vào khoảng thời gian này!`
-          : `Nhân viên này đã có ca làm trùng vào khoảng thời gian này!`
-      );
-    }
-
-    // TẠO CA LÀM XUỐNG DB
-    return this.prisma.workSchedule.create({
-      data: {
-        userId: targetUserId,
-        startTime: start,
-        endTime: end,
-        note: dto.note,
-        status: finalStatus,
-        settingId: creator.role === Role.STAFF ? dto.settingId : null,
-      },
-    });
-  }
 
   // Lấy lịch (Giữ nguyên logic cũ, chỉ cần sort theo startTime)
   async findAll(startDate?: string, endDate?: string) {
@@ -152,18 +152,18 @@ export class SchedulesService {
 
     // 2. Chuyển trạng thái các ca mới thành Đã Công Bố (isPublished = true)
     await this.prisma.workSchedule.updateMany({
-      where: { 
-        id: { in: scheduleIds }, 
-        status: 'APPROVED', 
-        isPublished: false 
+      where: {
+        id: { in: scheduleIds },
+        status: 'APPROVED',
+        isPublished: false
       },
-      data: { isPublished: true } 
+      data: { isPublished: true }
     });
 
     // 3. 👇 LOGIC MỚI: GOM TOÀN BỘ CA LÀM CỦA TUẦN 👇
     // Tìm tất cả các ca làm của những nhân viên trên, NẰM TRONG TUẦN ĐÓ, và ĐÃ ĐƯỢC CÔNG BỐ
     const fullPublishedSchedules = await this.prisma.workSchedule.findMany({
-      where: { 
+      where: {
         userId: { in: userIds },
         isPublished: true, // Lấy CẢ CŨ LẪN MỚI miễn là đã công bố
         startTime: { gte: new Date(startDate) },
@@ -173,7 +173,7 @@ export class SchedulesService {
     });
 
     // Trả về cái mảng khổng lồ này cho Notification Service tự động vẽ Bảng
-    return fullPublishedSchedules; 
+    return fullPublishedSchedules;
   }
 
   async update(id: number, updateScheduleDto: UpdateScheduleDto) {
@@ -221,10 +221,10 @@ export class SchedulesService {
       where: { id },
       data: {
         ...(userId && { userId }),
-        
+
         // 👇 ÉP KIỂU Ở ĐÂY BẰNG CHỮ "as ApprovalStatus" 👇
-        ...(status && { status: status as ApprovalStatus }), 
-        
+        ...(status && { status: status as ApprovalStatus }),
+
         ...(note !== undefined && { note }),
         ...(startTime && { startTime: new Date(startTime) }),
         ...(endTime && { endTime: new Date(endTime) }),
@@ -273,6 +273,5 @@ export class SchedulesService {
     return newSetting; // Trả về cục setting vừa tạo
   }
 
-
-
+  
 }

@@ -36,6 +36,7 @@
     "cloudinary": "^2.9.0",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "qs": "^6.15.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3",
@@ -52,6 +53,7 @@
     "@types/jest": "^30.0.0",
     "@types/multer": "^2.0.0",
     "@types/node": "^22.10.7",
+    "@types/qs": "^6.15.0",
     "@types/streamifier": "^0.1.2",
     "@types/supertest": "^6.0.2",
     "class-validator": "^0.14.2",
@@ -87,5 +89,8 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "prisma": {
+    "seed": "ts-node prisma/seed.ts"
   }
 }

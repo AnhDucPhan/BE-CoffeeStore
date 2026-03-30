@@ -74,7 +74,6 @@ export class ProductsService {
     }
   }
 
-  // src/products/products.service.ts
 
   async findAll(query: FilterProductDto): Promise<PaginatedResult<Product>> {
 

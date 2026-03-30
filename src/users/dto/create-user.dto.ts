@@ -4,7 +4,7 @@ import { IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, MinLength } from 'cl
 
 export class CreateUserDto {
   @ApiProperty({ example: 'abc@gmail.com' })
-  @IsEmail({}, { message: 'Email không hợp lệ ' })
+  @IsEmail({}, { message: 'Email không hợp lệ' })
   email: string;
 
   @ApiPropertyOptional({ example: 'John Doe' })
@@ -14,7 +14,7 @@ export class CreateUserDto {
 
   @ApiProperty({ example: '123456' })
   @IsString()
-  @IsNotEmpty({ message: 'Password ko the de trong' })
+  @IsNotEmpty({ message: 'Password không được để trống' })
   @MinLength(6, { message: 'Password phải ít nhất 6 ký tự' })
   password: string;
 
@@ -24,7 +24,7 @@ export class CreateUserDto {
   role?: Role;
 
   @IsString()
-  @IsNotEmpty({ message: 'Password ko the de trong' })
+  @IsNotEmpty({ message: 'Số điện thoại không được để trống' }) // 👈 Đã sửa lỗi copy-paste ở đây
   phoneNumber: string;
 
   @IsOptional()
@@ -34,4 +34,9 @@ export class CreateUserDto {
   @IsString()
   @IsOptional()
   avatar?: string;
+
+  @ApiPropertyOptional({ example: 'Barista' })
+  @IsOptional()
+  @IsString({ message: 'Chức vụ phải là một chuỗi văn bản' })
+  position?: string;
 }

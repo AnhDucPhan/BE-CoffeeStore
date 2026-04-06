@@ -16,9 +16,10 @@ import { PayrollModule } from './payroll/payroll.module';
 import { SalaryModule } from './salary/salary.module';
 import { MaterialModule } from './material/material.module';
 import { CategoriesModule } from './categories/categories.module';
+import { ProductCategoryModule } from './product-category/product-category.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), UsersModule, PrismaModule, AuthModule, ProductsModule, CartModule, ScheduleModule, NotificationModule, PaymentModule, OrderModule, AttendanceModule, PayrollModule, SalaryModule, MaterialModule, CategoriesModule],
+  imports: [ConfigModule.forRoot({ isGlobal: true }), UsersModule, PrismaModule, AuthModule, ProductsModule, CartModule, ScheduleModule, NotificationModule, PaymentModule, OrderModule, AttendanceModule, PayrollModule, SalaryModule, MaterialModule, CategoriesModule, ProductCategoryModule],
   controllers: [AppController],
   providers: [AppService],
 })

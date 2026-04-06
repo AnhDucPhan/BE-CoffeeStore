@@ -1,28 +1,40 @@
-import { IsOptional, IsString, IsNumber, Min, IsIn } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsOptional, IsString } from 'class-validator';
 
 export class FilterProductDto {
   @IsOptional()
-  @Type(() => Number) // Tự động ép kiểu chuỗi '1' thành số 1
-  @IsNumber()
-  @Min(1)
-  page?: number; // Mặc định là trang 1
+  @IsString()
+  page?: string;
 
+  // Dùng cho Shop bên Frontend khách hàng
   @IsOptional()
-  @Type(() => Number)
-  @IsNumber()
-  @Min(1)
-  items_per_page?: number = 9; // Mặc định lấy 10 cái
+  @IsString()
+  items_per_page?: string; 
+
+  // Dùng cho trang MenuAdmin
+  @IsOptional()
+  @IsString()
+  perPage?: string;
+
+  // 👇 Thêm q để nhận từ khóa tìm kiếm (Tên món)
+  @IsOptional()
+  @IsString()
+  q?: string;
+
+  // Nhận ID của nhóm món để lọc
+  @IsOptional()
+  @IsString()
+  productCategoryId?: string;
+
+  // Nhận trạng thái để lọc (Đang bán / Ngưng bán)
+  @IsOptional()
+  @IsString()
+  isActive?: string;
 
   @IsOptional()
   @IsString()
-  search?: string; // Để tìm kiếm theo tên
+  orderBy?: string;
 
   @IsOptional()
-  @IsIn(['asc', 'desc']) 
-  sort?: 'asc' | 'desc';
-
-  @IsOptional()
-  @IsIn(['createdAt', 'price', 'name']) // Chỉ cho phép các cột này
-  orderBy?: 'createdAt' | 'price' | 'name';
+  @IsString()
+  sort?: string;
 }

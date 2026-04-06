@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -12,7 +12,7 @@ const paginate = paginator({ perPage: 10 });
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService,private readonly cloudinaryService: CloudinaryService,) { }
+  constructor(private prisma: PrismaService, private readonly cloudinaryService: CloudinaryService,) { }
 
   async create(createProductDto: CreateProductDto, file: Express.Multer.File) {
     try {
@@ -29,7 +29,7 @@ export class ProductsService {
       // Vì multipart/form-data gửi mọi thứ lên dạng String
       const price = Number(createProductDto.price);
       const stock = createProductDto.stock ? Number(createProductDto.stock) : 0;
-      const categoryId = createProductDto.categoryId ? Number(createProductDto.categoryId) : undefined;
+      const productCategoryId = createProductDto.productCategoryId ? Number(createProductDto.productCategoryId) : undefined;
 
       // Xử lý isActive (đôi khi gửi lên là chuỗi "true"/"false")
       const isActive = createProductDto.isActive !== undefined
@@ -56,11 +56,11 @@ export class ProductsService {
           isActive: isActive,
           thumbnail: uploadResult.secure_url, // URL từ Cloudinary
           slug: slug,
-          ...(categoryId && { categoryId }),
+          ...(productCategoryId && { productCategoryId }),
         },
       });
 
-    } catch (error) {
+    } catch (error: any) {
       // Log lỗi để debug
       console.error('Service Error:', error);
 
@@ -74,42 +74,175 @@ export class ProductsService {
     }
   }
 
-
   async findAll(query: FilterProductDto): Promise<PaginatedResult<Product>> {
-
-
     const orderByField = query.orderBy || 'createdAt';
-
-    // Nếu FE không gửi sort thì lấy 'desc'
     const sortDirection = query.sort || 'desc';
+
+    // Cấu hình điều kiện tìm kiếm và lọc
+    const whereCondition: any = {};
+
+    // 1. Nếu có gửi chữ tìm kiếm (q) -> Tìm theo tên chứa chữ đó
+    if (query.q) {
+      whereCondition.name = {
+        contains: query.q,
+        mode: 'insensitive', // Tìm kiếm không phân biệt chữ hoa/chữ thường
+      };
+    }
+
+    // 2. Nếu có lọc theo danh mục
+    if (query.productCategoryId) {
+      whereCondition.productCategoryId = Number(query.productCategoryId);
+    }
+
+    if (query.isActive !== undefined) {
+      whereCondition.isActive = String(query.isActive) === 'true';
+    }
+
+    // Lấy số lượng item mỗi trang (ưu tiên perPage của Admin, không có thì lấy của Shop)
+    const limit = query.perPage || query.items_per_page || '10';
 
     return paginate(
       this.prisma.product,
       {
-
+        where: whereCondition, // 👇 Nhét cục where vào đây
         orderBy: {
-          // Sử dụng cú pháp Dynamic Key
           [orderByField]: sortDirection
         },
+        include: {
+          productCategory: true, // Nhớ include cái này để FE MenuAdmin lấy được tên danh mục nhé!
+        }
       },
       {
         page: query.page,
-        perPage: query.items_per_page,
+        perPage: limit,
       }
     );
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} product`;
+
+
+  async findOne(id: number) {
+    const product = await this.prisma.product.findUnique({
+      where: { id },
+      include: {
+        productCategory: true, // Lấy kèm luôn thông tin danh mục của sản phẩm
+      },
+    });
+
+    // Nếu không tìm thấy sản phẩm trong Database thì báo lỗi 404
+    if (!product) {
+      throw new NotFoundException(`Sản phẩm với ID ${id} không tồn tại`);
+    }
+
+    return product;
   }
 
-  update(id: number, updateProductDto: UpdateProductDto) {
-    return `This action updates a #${id} product`;
+  async update(id: number, updateProductDto: UpdateProductDto, file?: Express.Multer.File) {
+    try {
+      // 1. Kiểm tra sản phẩm có tồn tại không
+      const existingProduct = await this.prisma.product.findUnique({
+        where: { id },
+      });
+
+      if (!existingProduct) {
+        throw new NotFoundException(`Sản phẩm với ID ${id} không tồn tại!`);
+      }
+
+      // Khởi tạo object chứa dữ liệu sẽ update
+      const updateData: any = {};
+      let thumbnailUrl = existingProduct.thumbnail; // Mặc định giữ lại ảnh cũ
+
+      // 2. Xử lý Upload ảnh mới (nếu có gửi file)
+      if (file) {
+        const uploadResult = await this.cloudinaryService.uploadImage(file, 'products');
+        thumbnailUrl = uploadResult.secure_url; // Ghi đè link ảnh mới
+        // Mẹo: Nếu CloudinaryService của bạn có hàm xóa ảnh cũ, bạn có thể gọi ở đây
+        // await this.cloudinaryService.deleteImage(existingProduct.thumbnail_public_id);
+      }
+      updateData.thumbnail = thumbnailUrl;
+
+      // 3. Xử lý Text & Convert kiểu dữ liệu (chỉ check những trường có gửi lên)
+      if (updateProductDto.name) {
+        updateData.name = updateProductDto.name;
+
+        // Sinh slug mới và check trùng
+        const newSlug = this.generateSlug(updateProductDto.name);
+        const slugExists = await this.prisma.product.findFirst({
+          where: { slug: newSlug, id: { not: id } }, // Tìm xem có ai trùng slug mà khác ID hiện tại không
+        });
+
+        if (slugExists) {
+          throw new BadRequestException('Tên sản phẩm này đã tồn tại!');
+        }
+        updateData.slug = newSlug;
+      }
+
+      if (updateProductDto.description !== undefined) {
+        updateData.description = updateProductDto.description;
+      }
+
+      if (updateProductDto.price !== undefined) {
+        updateData.price = Number(updateProductDto.price);
+      }
+
+      if (updateProductDto.stock !== undefined) {
+        updateData.stock = Number(updateProductDto.stock);
+      }
+
+      if (updateProductDto.productCategoryId !== undefined) {
+        updateData.productCategoryId = Number(updateProductDto.productCategoryId);
+      }
+
+      if (updateProductDto.isActive !== undefined) {
+        updateData.isActive = String(updateProductDto.isActive) === 'true';
+      }
+
+      // 4. Lưu dữ liệu đã cập nhật xuống DB
+      return await this.prisma.product.update({
+        where: { id },
+        data: updateData,
+      });
+
+    } catch (error: any) {
+      console.error('Update Service Error:', error);
+      if (error instanceof BadRequestException || error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Lỗi khi cập nhật sản phẩm: ' + error.message);
+    }
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} product`;
+  // 👇 2. HÀM DELETE
+  async remove(id: number) {
+    try {
+      // 1. Check xem có tồn tại không trước khi xóa
+      const existingProduct = await this.prisma.product.findUnique({
+        where: { id },
+      });
+
+      if (!existingProduct) {
+        throw new NotFoundException(`Sản phẩm với ID ${id} không tồn tại!`);
+      }
+
+      // 2. Tiến hành xóa
+      await this.prisma.product.delete({
+        where: { id },
+      });
+
+      return {
+        message: 'Xóa sản phẩm thành công!',
+        success: true
+      };
+
+    } catch (error: any) {
+      console.error('Delete Service Error:', error);
+      if (error instanceof NotFoundException) {
+        throw error;
+      }
+      throw new InternalServerErrorException('Lỗi khi xóa sản phẩm: ' + error.message);
+    }
   }
+
 
   private generateSlug(text: string): string {
     return text

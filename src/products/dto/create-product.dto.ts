@@ -1,13 +1,13 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
-import { 
-  IsBoolean, 
-  IsNotEmpty, 
-  IsNumber, 
-  IsOptional, 
-  IsString, 
-  Min, 
-  IsArray 
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  Min,
+  IsArray
 } from 'class-validator';
 
 export class CreateProductDto {
@@ -49,15 +49,26 @@ export class CreateProductDto {
   @IsOptional()
   @Type(() => Number) // 👈 Ép kiểu ID về số
   @IsNumber()
-  categoryId?: number;
+  productCategoryId?: number;
 
   @ApiPropertyOptional({ example: true, default: true })
   @IsOptional()
-  @Transform(({ value }) => {
-    if (value === 'true') return true;
-    if (value === 'false') return false;
-    return value;
+  // 👇 TUYỆT CHIÊU: Dùng tham số `obj` để lấy dữ liệu gốc của Frontend
+  @Transform(({ obj }) => {
+    // obj.isActive chính là cái chuỗi nguyên thủy ("false" hoặc "true") mà FE gửi lên,
+    // chưa hề bị NestJS nhúng tay vào ép kiểu.
+    const rawValue = obj.isActive; 
+
+    if (rawValue === 'true') return true;
+    if (rawValue === 'false') return false;
+    
+    // Đề phòng trường hợp ai đó gửi đúng boolean thật (qua JSON thay vì FormData)
+    if (rawValue === true) return true;
+    if (rawValue === false) return false;
+
+    return rawValue;
   })
-  @IsBoolean()
+  @IsBoolean({ message: 'isActive phải là boolean hợp lệ' })
   isActive?: boolean;
+
 }

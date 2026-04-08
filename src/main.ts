@@ -9,7 +9,7 @@ async function bootstrap() {
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT') || 4000;
   app.enableCors({
-    origin: ['http://localhost:3000', 'http://localhost:3001'], // Cho phép Next.js
+    origin: ['http://localhost:3000', 'https://order-web-7ayq.vercel.app'], // Cho phép Next.js
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true, // Cho phép cookie/token
   });
@@ -25,7 +25,7 @@ async function bootstrap() {
   );
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  await app.listen(port);
+  await app.listen(port,'0.0.0.0');
   new Logger('Bootstrap').log(`🚀 Running on http://localhost:${port}`);
 }
 bootstrap();

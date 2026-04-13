@@ -6,14 +6,61 @@ import { FilterProductDto } from './dto/filter-product.dto';
 import { PaginatedResult, paginator } from 'src/common/helpers/paginator';
 import { Product } from '@prisma/client';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
+import Redis from 'ioredis';
 
 
 const paginate = paginator({ perPage: 10 });
 
 @Injectable()
 export class ProductsService {
-  constructor(private prisma: PrismaService, private readonly cloudinaryService: CloudinaryService,) { }
+  private redis: Redis;
+  constructor(private prisma: PrismaService, private readonly cloudinaryService: CloudinaryService,) {
+    this.redis = new Redis(process.env.REDIS_URL);
+  }
 
+  async updateBestSellerRank(productId: number, quantityBought: number) { // Đổi productId thành number cho đồng bộ
+    // Redis tự động convert number thành string khi lưu, nên không sao cả
+    await this.redis.zincrby('best_sellers', quantityBought, productId);
+    console.log(`Đã cộng ${quantityBought} lượt mua cho sản phẩm ${productId} vào Redis!`);
+  }
+
+  // =========================================================
+  // LẤY DANH SÁCH BEST SELLER TỪ REDIS (ĐÃ TỐI ƯU)
+  // =========================================================
+  async getBestSellers(limit: number = 5) {
+    // 🔍 Lớp quét 1: Kiểm tra xem biến môi trường có bị undefined không?
+    console.log("🔍 [1] REDIS_URL đang dùng:", process.env.REDIS_URL ? "Có link Upstash" : "BỊ UNDEFINED RỒI!!!");
+
+    const topProductIdsString = await this.redis.zrevrange('best_sellers', 0, limit - 1);
+    
+    // 🔍 Lớp quét 2: Kiểm tra xem Redis có trả về ['13'] không?
+    console.log("🔍 [2] Danh sách ID từ Redis:", topProductIdsString);
+
+    if (topProductIdsString.length === 0) {
+      console.log("🛑 Bị chặn lại vì Redis trả về mảng rỗng!");
+      return [];
+    }
+
+    const topProductIds = topProductIdsString.map((id) => Number(id));
+
+    const products = await this.prisma.product.findMany({
+      where: {
+        id: { in: topProductIds },
+      },
+      include: {
+        productCategory: true,
+      }
+    });
+
+    // 🔍 Lớp quét 3: Kiểm tra xem Postgres có tìm thấy sản phẩm số 13 không?
+    console.log("🔍 [3] Các ID tìm thấy trong DB Postgres:", products.map(p => p.id));
+
+    const sortedBestSellers = topProductIds.map((id) =>
+      products.find((p) => p.id === id)
+    ).filter(product => product !== undefined);
+
+    return sortedBestSellers;
+  }
   async create(createProductDto: CreateProductDto, file: Express.Multer.File) {
     try {
       // 1. Validate File (Logic nghiệp vụ)

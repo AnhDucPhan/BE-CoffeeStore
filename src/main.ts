@@ -3,6 +3,7 @@ import { AppModule } from './app.module';
 import { Logger, ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
+import { Request, Response, NextFunction } from 'express';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -24,6 +25,10 @@ async function bootstrap() {
     }),
   );
   app.useGlobalFilters(new AllExceptionsFilter());
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    console.log(`🚨 [BẮT TẠI TRẬN] Next.js vừa gọi: ${req.method} ${req.originalUrl}`);
+    next();
+  });
 
   await app.listen(port,'0.0.0.0');
   new Logger('Bootstrap').log(`🚀 Running on http://localhost:${port}`);

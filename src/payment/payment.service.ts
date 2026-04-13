@@ -1,27 +1,41 @@
-import { Injectable } from '@nestjs/common';
+import { forwardRef, Inject, Injectable } from '@nestjs/common';
 import * as crypto from 'crypto';
 import * as qs from 'qs';
-import { OrderService } from 'src/order/order.service';
+import { CustomerOrderData, OrderService } from 'src/order/order.service';
+
+
 
 @Injectable()
 export class PaymentService {
-  constructor(private readonly orderService: OrderService) { }
+  constructor(
+    @Inject(forwardRef(() => OrderService))
+    private readonly orderService: OrderService
+  ) { }
 
-  createPaymentUrl(amount: number, ipAddr: string): string {
-    // 👇 Gọi ngược lại từ file .env (Thêm fallback rỗng để không bị lỗi TypeScript)
+  async processCheckout(userId: number, customerData: CustomerOrderData, ipAddr: string) {
+    // 1. Sai khiến OrderService đi tạo đơn hàng dưới Database
+    const newOrder = await this.orderService.createOrder(userId, customerData);
+
+    // 👇 2. ÉP KIỂU Number(newOrder.totalAmount) Ở ĐÂY
+    const checkoutUrl = this.createPaymentUrl(Number(newOrder.totalAmount), newOrder.orderCode, ipAddr);
+
+    // 3. Trả kết quả về cho Controller
+    return { success: true, checkoutUrl, orderCode: newOrder.orderCode };
+  }
+
+  
+
+  createPaymentUrl(amount: number, orderCode: string, ipAddr: string): string {
     const tmnCode = process.env.VNP_TMNCODE || '';
-    const secretKey = (process.env.VNP_HASHSECRET || '').trim(); // Vẫn giữ trim() cho chắc cốp
+    const secretKey = (process.env.VNP_HASHSECRET || '').trim();
     const vnpUrl = process.env.VNP_URL || '';
     const returnUrl = process.env.VNP_RETURNURL || '';
 
-    // Ép cứng IP xịn để test ở Localhost không bị lỗi (Khi lên production có thể dùng lại biến ipAddr)
     const safeIpAddr = '12.34.56.78';
 
-    // Xử lý múi giờ VN an toàn
     const vnTime = new Date().toLocaleString('en-US', { timeZone: 'Asia/Ho_Chi_Minh' });
     const date = new Date(vnTime);
     const createDate = this.formatDate(date);
-    const orderId = date.getTime().toString();
 
     let vnp_Params: any = {};
     vnp_Params['vnp_Version'] = '2.1.0';
@@ -29,32 +43,25 @@ export class PaymentService {
     vnp_Params['vnp_TmnCode'] = tmnCode;
     vnp_Params['vnp_Locale'] = 'vn';
     vnp_Params['vnp_CurrCode'] = 'VND';
-    vnp_Params['vnp_TxnRef'] = orderId;
-    vnp_Params['vnp_OrderInfo'] = 'Thanh toan don hang ' + orderId;
+    vnp_Params['vnp_TxnRef'] = orderCode; // 👈 Gắn orderCode của Database vào đây
+    vnp_Params['vnp_OrderInfo'] = 'Thanh toan don hang ' + orderCode;
     vnp_Params['vnp_OrderType'] = 'other';
     vnp_Params['vnp_Amount'] = Math.floor(Number(amount) * 100);
     vnp_Params['vnp_ReturnUrl'] = returnUrl;
     vnp_Params['vnp_IpAddr'] = safeIpAddr;
     vnp_Params['vnp_CreateDate'] = createDate;
 
-    // 1. Sắp xếp tham số chuẩn
     vnp_Params = this.sortObject(vnp_Params);
-
-    // 2. Nối chuỗi & Tạo Hash
     const signData = qs.stringify(vnp_Params, { encode: false });
     const hmac = crypto.createHmac('sha512', secretKey);
     const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
 
-    // 3. Gắn chữ ký và ra lò cái Link
     vnp_Params['vnp_SecureHash'] = signed;
-    const paymentUrl = vnpUrl + '?' + qs.stringify(vnp_Params, { encode: false });
-
-    return paymentUrl;
+    return vnpUrl + '?' + qs.stringify(vnp_Params, { encode: false });
   }
 
-  async verifyPaymentReturn(vnpayParamsRaw: any, userId: number) {
+  async verifyPaymentReturn(vnpayParamsRaw: any) {
     const secretKey = (process.env.VNP_HASHSECRET || '').trim();
-
     let vnpayParams = { ...vnpayParamsRaw };
 
     const secureHash = vnpayParams['vnp_SecureHash'];
@@ -62,25 +69,23 @@ export class PaymentService {
     delete vnpayParams['vnp_SecureHashType'];
 
     vnpayParams = this.sortObject(vnpayParams);
-
     const signData = qs.stringify(vnpayParams, { encode: false });
     const hmac = crypto.createHmac('sha512', secretKey);
     const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
 
     if (secureHash === signed) {
       const responseCode = vnpayParams['vnp_ResponseCode'];
-      const txnRef = vnpayParams['vnp_TxnRef']; // Mã đơn hàng tạm lúc trước mình tạo
+      const txnRef = vnpayParams['vnp_TxnRef']; // Chính là orderCode
 
-      // Mã '00' là giao dịch thành công (Khách đã bị trừ tiền)
       if (responseCode === '00') {
         try {
-          // Gọi sang OrderService để TẠO ĐƠN HÀNG & XÓA GIỎ HÀNG
-          await this.orderService.createOrderFromCart(userId, txnRef);
+          // 👇 CHỈ CẦN GỌI HÀM CẬP NHẬT TRẠNG THÁI VÀ DỌN GIỎ HÀNG
+          await this.orderService.completeOrderPayment(txnRef);
 
           return { isSuccess: true, message: 'Giao dịch thành công!' };
         } catch (error) {
-          console.error("Lỗi tạo đơn hàng:", error);
-          return { isSuccess: false, message: 'Lỗi hệ thống khi tạo đơn hàng' };
+          console.error("Lỗi hoàn tất đơn hàng:", error);
+          return { isSuccess: false, message: 'Lỗi hệ thống khi hoàn tất đơn hàng' };
         }
       } else {
         return { isSuccess: false, message: 'Giao dịch thất bại hoặc bị hủy' };

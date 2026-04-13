@@ -32,6 +32,18 @@ export class ProductsController {
     return this.productsService.findAll(query);
   }
 
+  @Get('top/best-sellers')
+  async getBestSellers() {
+    // Truyền số 5 vào để lấy Top 5 món
+    const products = await this.productsService.getBestSellers(5);
+    
+    return {
+      success: true,
+      message: 'Lấy danh sách Best Seller thành công!',
+      data: products,
+    };
+  }
+
   @Get(':id')
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.productsService.findOne(id);
@@ -46,7 +58,7 @@ export class ProductsController {
   ) {
     console.log('DỮ LIỆU DTO NHẬN ĐƯỢC:', updateProductDto);
     return this.productsService.update(id, updateProductDto, file);
-  }P
+  }
 
   // 👇 THÊM ENDPOINT DELETE
   @Delete(':id')

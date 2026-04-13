@@ -1,36 +1,33 @@
-import { Controller, Post, Body, Req, UseGuards, Get, Query } from '@nestjs/common';
+import { Controller, Post, Body, Req, UseGuards, Get, Query, Ip } from '@nestjs/common';
 import { PaymentService } from './payment.service';
 import { Request } from 'express';
 import { JwtAuthGuard } from 'src/auth/jwt-auth.guard';
 import { User } from 'src/common/decorators/user.decorator';
+import { CustomerOrderData } from 'src/order/order.service';
 
 @Controller('payment')
 export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
 
-  @Post('create-url')
-  createPaymentUrl(@Body() body: { amount: number }, @Req() req: Request) {
-    const { amount } = body;
-
-    // VNPay bắt buộc phải gửi kèm địa chỉ IP của người mua
-    const ipAddr = 
-      req.headers['x-forwarded-for'] ||
-      req.connection.remoteAddress ||
-      req.socket.remoteAddress ||
-      '127.0.0.1';
-
-    // Gọi Service để nặn ra cái link
-    const checkoutUrl = this.paymentService.createPaymentUrl(amount, ipAddr as string);
-
-    // Trả cái link đó về cho Frontend
-    return {
-      message: 'Tạo link VNPay thành công',
-      checkoutUrl: checkoutUrl
-    };
-  }
-  @UseGuards(JwtAuthGuard)
   @Get('vnpay-return')
-  async vnpayReturn(@Query() query: any, @User() user: any) {
-    return this.paymentService.verifyPaymentReturn(query, Number(user.userId));
+  async vnpayReturn(@Query() query: any) {
+    // API này giờ là Public. Bảo mật dựa vào việc check chữ ký Hash của VNPay.
+    return this.paymentService.verifyPaymentReturn(query);
   }
+
+  // API Checkout thì vẫn cần Guard vì cần biết ai đang mua hàng
+  @UseGuards(JwtAuthGuard)
+  @Post('checkout')
+  async checkout(
+    @User() user: any, 
+    @Body() customerData: CustomerOrderData, 
+    @Ip() ipAddr: string 
+  ) {
+    const userId = Number(user.userId);
+    let ip = ipAddr === '::1' ? '127.0.0.1' : ipAddr;
+
+    return await this.paymentService.processCheckout(userId, customerData, ip);
+  }
+
+  
 }

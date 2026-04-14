@@ -101,6 +101,7 @@ export class OrderService {
       where: { orderCode },
       include: { items: true }
     });
+    console.log("Kết quả tìm trong Database:", order);
 
     if (!order) throw new Error("Không tìm thấy đơn hàng");
     if (order.paymentStatus === 'COMPLETED') return;

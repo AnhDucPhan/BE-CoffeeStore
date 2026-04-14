@@ -23,7 +23,7 @@ export class PaymentService {
     return { success: true, checkoutUrl, orderCode: newOrder.orderCode };
   }
 
-  
+
 
   createPaymentUrl(amount: number, orderCode: string, ipAddr: string): string {
     const tmnCode = process.env.VNP_TMNCODE || '';
@@ -72,7 +72,8 @@ export class PaymentService {
     const signData = qs.stringify(vnpayParams, { encode: false });
     const hmac = crypto.createHmac('sha512', secretKey);
     const signed = hmac.update(Buffer.from(signData, 'utf-8')).digest('hex');
-
+    console.log("Hash VNPay gửi:", secureHash)
+    console.log("Hash BE tự tạo:", signed)
     if (secureHash === signed) {
       const responseCode = vnpayParams['vnp_ResponseCode'];
       const txnRef = vnpayParams['vnp_TxnRef']; // Chính là orderCode

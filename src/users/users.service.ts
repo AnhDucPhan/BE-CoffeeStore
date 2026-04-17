@@ -4,9 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { CloudinaryService } from 'src/cloudinary/cloudinary.service';
-import { FileInterceptor } from '@nestjs/platform-express';
 import { PaginatedResult, paginator } from 'src/common/helpers/paginator';
-
 
 const SALARY_MAP: Record<string, number> = {
   "Store Manager": 45000,
@@ -28,15 +26,18 @@ export class UsersService {
     const user = await this.prisma.user.findUnique({
       where: { email },
     });
-
     return user;
   }
 
+  // ====================================================================
+  // 1. TẠO TÀI KHOẢN (Bỏ qua xác thực nếu là Admin/Manager tạo)
+  // ====================================================================
   async create(data: Prisma.UserCreateInput, file?: Express.Multer.File, creatorRole?: string) {
     const existingEmail = await this.findByEmail(data.email);
     if (existingEmail) {
       throw new BadRequestException('Email đã tồn tại');
     }
+    
     let avatarUrl = data.avatar;
 
     if (file) {
@@ -45,14 +46,14 @@ export class UsersService {
     }
 
     const hashedPass = await bcrypt.hash(data.password, 10);
+    const autoSalary = data.position ? (SALARY_MAP[data.position as string] || 25000) : 25000;
 
-    const autoSalary = data.position ? (SALARY_MAP[data.position] || 25000) : 25000;
+    let finalRole = data.role ?? 'USER'; 
 
-    // 👇 LOGIC PHÂN QUYỀN TỰ ĐỘNG VÀ BẢO MẬT 👇
-    let finalRole = data.role ?? 'USER'; // Mặc định là USER nếu không gửi gì
+    // 👇 1. NHẬN DIỆN NGƯỜI TẠO TÀI KHOẢN
+    const isCreatedByAdminOrManager = creatorRole === 'MANAGER' || creatorRole === 'ADMIN';
 
-    // Nếu người tạo là MANAGER -> Ép cứng tài khoản mới phải là STAFF 
-    // (Bỏ qua data.role họ gửi từ Frontend lên để tránh hack)
+    // Manager thì chỉ được phép tạo Staff (để chống hack leo quyền)
     if (creatorRole === 'MANAGER') {
       finalRole = 'STAFF';
     }
@@ -61,9 +62,14 @@ export class UsersService {
       data: {
         ...data,
         password: hashedPass,
-        role: finalRole, // 👈 Gắn finalRole vào đây
+        role: finalRole, 
         avatar: avatarUrl,
         hourlyRate: autoSalary, 
+        
+        // 👇 2. LOGIC BỎ QUA XÁC THỰC
+        // Nếu là Admin hoặc Manager tạo -> Mở khóa đăng nhập luôn (true)
+        // Nếu không có quyền (tự đăng ký) -> Bắt xác thực (false)
+        isEmailVerified: isCreatedByAdminOrManager ? true : false, 
       }
     });
   }
@@ -71,23 +77,18 @@ export class UsersService {
   async findAll(
     page: number = 1, 
     perPage: number = 10,
-    roleFilter?: string,     // 👈 Thêm tham số lọc chức vụ
-    statusFilter?: string    // 👈 Thêm tham số lọc trạng thái
+    roleFilter?: string,    
+    statusFilter?: string   
   ): Promise<PaginatedResult<any>> {
     
-    // 1. Tạo điều kiện Where cơ bản (Mặc định lấy STAFF và MANAGER)
     const where: Prisma.UserWhereInput = {
       role: { in: ['STAFF', 'MANAGER'] },
     };
 
-    // 2. Thêm điều kiện lọc Role (nếu có)
-    // Giả sử Frontend truyền lên 'Store Manager' hoặc 'Barista'
     if (roleFilter) {
       where.position = roleFilter; 
     }
 
-    // 3. Thêm điều kiện lọc Status (nếu có)
-    // Giả sử Frontend truyền lên 'Active' hoặc 'Inactive'
     if (statusFilter) {
       where.status = statusFilter;
     }
@@ -95,7 +96,7 @@ export class UsersService {
     return paginate(
       this.prisma.user,
       {
-        where, // 👈 Truyền cục Where đã được "nạp" điều kiện vào đây
+        where, 
         select: {
           id: true, email: true, name: true, role: true, createdAt: true,
           phoneNumber: true, address: true, avatar: true, status: true, position: true,
@@ -106,43 +107,43 @@ export class UsersService {
     );
   }
 
-  
+  // ====================================================================
+  // 2. CẬP NHẬT TÀI KHOẢN (Đã fix lỗi cập nhật lương)
+  // ====================================================================
   async update(id: number, updateUserDto: UpdateUserDto, file?: Express.Multer.File) {
-    // 1. Chuẩn bị object data để update
-    // Loại bỏ các field undefined/null để tránh Prisma update đè giá trị rỗng
     const dataToUpdate: any = { ...updateUserDto };
-    // 2. Xử lý Avatar (Nếu có file mới)
+    
     if (file) {
       try {
-        // Truyền file và tên thư mục (VD: 'avatars')
         const uploadResult = await this.cloudinaryService.uploadImage(file, 'avatars');
-
-        // Lấy đường dẫn URL an toàn trả về từ Cloudinary lưu vào DB
         dataToUpdate.avatar = uploadResult.secure_url;
       } catch (error) {
         throw new BadRequestException('Upload ảnh lên Cloudinary thất bại!');
       }
     }
-    // 3. Xử lý Password (Nếu có gửi password mới lên)
+    
     if (dataToUpdate.password) {
       const salt = await bcrypt.genSalt();
       dataToUpdate.password = await bcrypt.hash(dataToUpdate.password, salt);
     } else {
-      // Nếu không gửi password -> Xóa key này đi để không bị update thành chuỗi rỗng
       delete dataToUpdate.password;
     }
 
+    // 👇 FIX MỚI: Tự động cập nhật lại lương nếu Admin thay đổi chức vụ (position)
+    if (dataToUpdate.position) {
+      dataToUpdate.hourlyRate = SALARY_MAP[dataToUpdate.position] || 25000;
+    }
+
     try {
-      // 4. Gọi Prisma để update
       const updatedUser = await this.prisma.user.update({
-        where: { id }, // Tìm theo ID
+        where: { id }, 
         data: dataToUpdate,
       });
 
       const { password, ...result } = updatedUser;
       return result;
 
-    } catch (error) {
+    } catch (error : any) {
       if (error.code === 'P2025') {
         throw new NotFoundException(`User với ID ${id} không tồn tại`);
       }
@@ -172,7 +173,6 @@ export class UsersService {
       throw new NotFoundException(`Không tìm thấy User có ID: ${id}`);
     }
 
-    // Loại bỏ password cho an toàn
     const { password, ...result } = user;
     return result;
   }
@@ -181,11 +181,10 @@ export class UsersService {
     searchTerm: string, 
     page: number, 
     perPage: number,
-    roleFilter?: string,    // 👈 Thêm tham số lọc chức vụ
-    statusFilter?: string   // 👈 Thêm tham số lọc trạng thái
+    roleFilter?: string,    
+    statusFilter?: string  
   ): Promise<PaginatedResult<any>> {
     
-    // 1. Khai báo điều kiện tìm kiếm (Tên hoặc Email)
     const where: Prisma.UserWhereInput = searchTerm
       ? {
           OR: [
@@ -195,12 +194,10 @@ export class UsersService {
         }
       : {};
 
-    // 2. Thêm điều kiện lọc Role (nếu có)
     if (roleFilter) {
       where.position = roleFilter;
     }
 
-    // 3. Thêm điều kiện lọc Status (nếu có)
     if (statusFilter) {
       where.status = statusFilter;
     }
@@ -208,10 +205,10 @@ export class UsersService {
     return paginate(
       this.prisma.user,
       {
-        where, // 👈 Truyền cục Where tổng hợp vào
+        where,
         select: {
           id: true, name: true, email: true, avatar: true, position: true, 
-          hourlyRate: true, status: true, // Nhớ lấy thêm status để trả về FE
+          hourlyRate: true, status: true,
         },
         orderBy: { name: 'asc' },
       },

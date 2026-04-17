@@ -1,24 +1,38 @@
 // auth.service.ts
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from 'src/users/users.service';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
+// 👇 Bạn nhớ import MailService theo đúng đường dẫn trong dự án của bạn nhé
+import { MailService } from 'src/mail/mail.service'; 
 
 @Injectable()
 export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
-    private prisma: PrismaService
+    private prisma: PrismaService,
+    private mailService: MailService // 👈 Inject MailService vào đây
   ) {}
 
+  // ====================================================================
+  // 1. KIỂM TRA ĐĂNG NHẬP (Dùng cho luồng Credentials)
+  // ====================================================================
   async validateUser(email: string, password: string) {
     const user = await this.usersService.findByEmail(email);
+    
+    // Kiểm tra tài khoản có bị khóa không
     if (user && user.status !== 'Active') { 
        throw new UnauthorizedException("Tài khoản đang bị khóa (Inactive)!");
     }
+
+    // 👇 KIỂM TRA ĐÃ XÁC THỰC EMAIL CHƯA
+    if (user && !user.isEmailVerified) {
+       throw new UnauthorizedException("Vui lòng xác thực email trước khi đăng nhập!");
+    }
+
     if (user && (await bcrypt.compare(password, user.password))) {
       const { password, ...result } = user;
       return result;
@@ -36,17 +50,85 @@ export class AuthService {
     };
   }
 
+  // ====================================================================
+  // 2. ĐĂNG KÝ TÀI KHOẢN MỚI (Tự nhập Email/Pass)
+  // ====================================================================
+  async register(dto: any) { // Thay 'any' bằng RegisterDto của bạn
+    const existingUser = await this.prisma.user.findUnique({ where: { email: dto.email } });
+    if (existingUser) {
+      throw new BadRequestException('Email này đã được sử dụng!');
+    }
+
+    const hashedPassword = await bcrypt.hash(dto.password, 10);
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const verifyTokenExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 phút
+
+    const newUser = await this.prisma.user.create({
+      data: {
+        email: dto.email,
+        password: hashedPassword,
+        name: dto.name || '',
+        role: 'USER',
+        phoneNumber: '',
+        status: 'Active',
+        isEmailVerified: false,
+        verifyToken: otpCode,
+        verifyTokenExpires,
+      },
+    });
+
+    // Gửi mail ngầm
+    this.mailService.sendVerificationEmail(newUser.email, otpCode).catch(console.error);
+
+    return { success: true, message: 'Vui lòng kiểm tra email để nhận mã xác thực!', email: newUser.email };
+  }
+
+  // ====================================================================
+  // 3. XÁC THỰC MÃ OTP 6 SỐ
+  // ====================================================================
+  async verifyEmail(email: string, otpCode: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { 
+         email: email,
+         verifyToken: otpCode 
+      },
+    });
+
+    if (!user) {
+      throw new BadRequestException('Mã xác thực không đúng!');
+    }
+
+    if (user.verifyTokenExpires < new Date()) {
+      throw new BadRequestException('Mã xác thực đã hết hạn!');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        isEmailVerified: true,
+        verifyToken: null,
+        verifyTokenExpires: null,
+      },
+    });
+
+    return { success: true, message: 'Xác thực email thành công!' };
+  }
+
+  // ====================================================================
+  // 4. ĐĂNG NHẬP BẰNG GOOGLE (Ép xác thực OTP)
+  // ====================================================================
   async googleLogin(dto: GoogleLoginDto) {
-    // 1. Tìm user theo email
     let user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
 
-    // 2. Nếu chưa có tài khoản -> Tạo mới
+    // TRƯỜNG HỢP A: CHƯA CÓ TÀI KHOẢN -> TẠO MỚI & BẮT XÁC THỰC
     if (!user) {
-      // Băm một mật khẩu ngẫu nhiên cho user Google (vì Prisma có thể bắt buộc trường password)
       const randomPassword = Math.random().toString(36).slice(-10);
       const hashedPassword = await bcrypt.hash(randomPassword, 10);
+      
+      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const verifyTokenExpires = new Date(Date.now() + 15 * 60 * 1000);
 
       user = await this.prisma.user.create({
         data: {
@@ -57,32 +139,57 @@ export class AuthService {
           role: 'USER', 
           status: 'Active',
           phoneNumber: '',
-          // Điền thêm các trường bắt buộc khác nếu schema Prisma của bạn yêu cầu
+          isEmailVerified: false, // 👈 KHOÁ LẠI
+          verifyToken: otpCode,
+          verifyTokenExpires,
         },
       });
-    } else {
-      // (Tuỳ chọn) Nếu user đã tồn tại nhưng đổi avatar/tên trên Google, bạn có thể update lại
-      if (dto.avatar && user.avatar !== dto.avatar) {
-         user = await this.prisma.user.update({
-           where: { email: user.email },
-           data: { avatar: dto.avatar }
-         });
-      }
+
+      this.mailService.sendVerificationEmail(user.email, otpCode).catch(console.error);
+
+      // Trả về cờ hiệu cho Frontend biết phải mở form nhập 6 số
+      return { success: true, requiresVerification: true, email: user.email };
+    } 
+    
+    // TRƯỜNG HỢP B: ĐÃ CÓ TÀI KHOẢN NHƯNG CHƯA TỪNG XÁC THỰC
+    if (!user.isEmailVerified) {
+      const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+      const verifyTokenExpires = new Date(Date.now() + 15 * 60 * 1000);
+
+      user = await this.prisma.user.update({
+        where: { id: user.id },
+        data: {
+          avatar: dto.avatar && user.avatar !== dto.avatar ? dto.avatar : undefined,
+          verifyToken: otpCode,
+          verifyTokenExpires
+        }
+      });
+
+      this.mailService.sendVerificationEmail(user.email, otpCode).catch(console.error);
+
+      return { success: true, requiresVerification: true, email: user.email };
     }
 
-    // 3. Tạo Payload và Ký JWT Token (Giống hệt cách bạn làm ở hàm login cũ)
+    // TRƯỜNG HỢP C: TÀI KHOẢN ĐÃ XÁC THỰC TỪ TRƯỚC -> CHO PHÉP ĐĂNG NHẬP
+    // (Cập nhật avatar nếu có đổi trên Google)
+    if (dto.avatar && user.avatar !== dto.avatar) {
+      user = await this.prisma.user.update({
+        where: { email: user.email },
+        data: { avatar: dto.avatar }
+      });
+    }
+
     const payload = { 
-      sub: user.id, // hoặc id: user.id
+      sub: user.id, 
       email: user.email, 
       role: user.role 
     };
 
     const access_token = this.jwtService.sign(payload);
-
-    // 4. Xóa password trước khi trả về Frontend cho an toàn
     delete user.password;
 
     return {
+      success: true,
       user: user,
       access_token: access_token,
     };

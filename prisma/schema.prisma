@@ -23,6 +23,9 @@ model User {
   position      String?
   cart          Cart?
   hourlyRate    Int      @default(25000)
+  isEmailVerified    Boolean   @default(false)
+  verifyToken        String?   @unique
+  verifyTokenExpires DateTime?
 
   workSchedules WorkSchedule[]
   notifications Notification[]

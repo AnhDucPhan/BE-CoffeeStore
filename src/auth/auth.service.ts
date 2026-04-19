@@ -1,5 +1,5 @@
 // auth.service.ts
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import { Injectable, UnauthorizedException, BadRequestException, InternalServerErrorException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from 'src/users/users.service';
@@ -42,13 +42,29 @@ export class AuthService {
   }
 
   async login(user: any) {
-    const payload = { email: user.email, sub: user.id, role: user.role };
-    const { password, ...userInfo } = user;
-    return {
-      user: userInfo,
-      access_token: this.jwtService.sign(payload),
-    };
-  }
+    // 🛡 LỚP BẢO VỆ 1: Kiểm tra user có tồn tại không
+    if (!user) {
+      throw new UnauthorizedException('Không tìm thấy thông tin người dùng!');
+    }
+
+    try {
+      // 🛡 LỚP BẢO VỆ 2: An toàn bóc tách dữ liệu
+      const payload = { email: user.email, sub: user.id, role: user.role };
+      const { password, ...userInfo } = user;
+
+      // 🛡 LỚP BẢO VỆ 3: Bắt lỗi lúc tạo Token
+      const token = this.jwtService.sign(payload);
+
+      return {
+        user: userInfo,
+        access_token: token,
+      };
+      
+    } catch (error:any) {
+      console.error('🚨 LỖI TẠO TOKEN:', error.message);
+      throw new InternalServerErrorException('Lỗi hệ thống khi tạo phiên đăng nhập. Vui lòng kiểm tra JWT_SECRET');
+    }
+}
 
   // ====================================================================
   // 2. ĐĂNG KÝ TÀI KHOẢN MỚI (Tự nhập Email/Pass)

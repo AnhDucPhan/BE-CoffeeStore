@@ -6,7 +6,7 @@ import {
   HttpStatus,
 } from '@nestjs/common';
 import { Response } from 'express';
-import { ValidationError } from 'class-validator';
+// import { ValidationError } from 'class-validator'; (Nếu không dùng trực tiếp thì không cần thiết)
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -14,6 +14,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest();
+
+    // 👇 CHÈN NGAY DÒNG NÀY VÀO ĐỂ LỘT MẶT NẠ LỖI TRÊN RENDER
+    console.error(`🚨 [LỖI GỐC TẠI ${request.url}]:`, exception); 
 
     let status = HttpStatus.INTERNAL_SERVER_ERROR;
     let message: any = 'Internal server error';

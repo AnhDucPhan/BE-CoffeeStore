@@ -8,6 +8,7 @@ import { UsersModule } from 'src/users/users.module';
 import { JwtStrategy } from './jwt.strategy';
 import { PrismaModule } from 'src/prisma/prisma.module';
 import { MailModule } from 'src/mail/mail.module';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
@@ -15,9 +16,14 @@ import { MailModule } from 'src/mail/mail.module';
     UsersModule,
     PassportModule,
     MailModule,
-    JwtModule.register({
-      secret: process.env.JWT_SECRET || 'secretKey123',
-      signOptions: { expiresIn: '1d' },
+    // ✅ CÁCH CHUẨN ĐỂ ĐƯA LÊN MẠNG
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: async (configService: ConfigService) => ({
+        secret: configService.get<string>('JWT_SECRET'),
+        signOptions: { expiresIn: '1d' },
+      }),
     }),
   ],
   controllers: [AuthController],

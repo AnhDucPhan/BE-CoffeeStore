@@ -1,4 +1,5 @@
 import { PrismaClient, Role } from '@prisma/client'; // 👈 THÊM CHỮ Role VÀO ĐÂY
+import * as bcrypt from 'bcrypt';
 
 // Khởi tạo Prisma Client
 const prisma = new PrismaClient();
@@ -32,7 +33,7 @@ async function main() {
   console.log('Bắt đầu bơm dữ liệu (Seeding)... 🌱');
 
   // Mật khẩu chung "123456" đã được mã hóa
-  const hashedPassword = '$2b$10$EPf9S6jXvWdZq8mO9bZ6u.X2U1G7iXwQY/2eT7oK3c/5A7zZ9Xj2a';
+  const hashedPassword = await bcrypt.hash('123456', 10);
 
   // ==========================================
   // 1. TẠO TÀI KHOẢN NGƯỜI DÙNG (USERS)

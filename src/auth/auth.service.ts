@@ -6,7 +6,7 @@ import { UsersService } from 'src/users/users.service';
 import { GoogleLoginDto } from './dto/google-login.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 // 👇 Bạn nhớ import MailService theo đúng đường dẫn trong dự án của bạn nhé
-import { MailService } from 'src/mail/mail.service'; 
+import { MailService } from 'src/mail/mail.service';
 
 @Injectable()
 export class AuthService {
@@ -15,37 +15,41 @@ export class AuthService {
     private jwtService: JwtService,
     private prisma: PrismaService,
     private mailService: MailService // 👈 Inject MailService vào đây
-  ) {}
+  ) { }
 
   // ====================================================================
   // 1. KIỂM TRA ĐĂNG NHẬP (Dùng cho luồng Credentials)
   // ====================================================================
   async validateUser(email: string, password: string) {
     const user = await this.usersService.findByEmail(email);
-    
-    // Kiểm tra tài khoản có bị khóa không
-    if (user && user.status !== 'Active') { 
-       throw new UnauthorizedException("Tài khoản đang bị khóa (Inactive)!");
-    }
 
-    // 👇 KIỂM TRA ĐÃ XÁC THỰC EMAIL CHƯA
-    if (user && !user.isEmailVerified) {
-       throw new UnauthorizedException("Vui lòng xác thực email trước khi đăng nhập!");
-    }
-
-    if (user && (await bcrypt.compare(password, user.password))) {
-      const { password, ...result } = user;
-      return result;
-    }
-
-    return null;
-  }
-
-  async login(user: any) {
-    // 🛡 LỚP BẢO VỆ 1: Kiểm tra user có tồn tại không
+    // 1. Chặn ngay nếu không có user
     if (!user) {
-      throw new UnauthorizedException('Không tìm thấy thông tin người dùng!');
+      throw new UnauthorizedException("Tài khoản không tồn tại trên hệ thống!");
     }
+
+    // 2. Kiểm tra trạng thái
+    if (user.status !== 'Active') {
+      throw new UnauthorizedException("Tài khoản đang bị khóa (Inactive)!");
+    }
+
+    // 3. Kiểm tra xác thực
+    if (!user.isEmailVerified) {
+      throw new UnauthorizedException("Vui lòng xác thực email trước khi đăng nhập!");
+    }
+
+    // 4. Kiểm tra mật khẩu (Bắt lỗi rõ ràng)
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      throw new UnauthorizedException("Sai mật khẩu! Vui lòng thử lại.");
+    }
+
+    // 5. Nếu vượt qua hết, trả về thông tin
+    const { password: _, ...result } = user;
+    return result;
+  }
+  async login(user: any) {
+    
 
     try {
       // 🛡 LỚP BẢO VỆ 2: An toàn bóc tách dữ liệu
@@ -59,12 +63,12 @@ export class AuthService {
         user: userInfo,
         access_token: token,
       };
-      
-    } catch (error:any) {
+
+    } catch (error: any) {
       console.error('🚨 LỖI TẠO TOKEN:', error.message);
       throw new InternalServerErrorException('Lỗi hệ thống khi tạo phiên đăng nhập. Vui lòng kiểm tra JWT_SECRET');
     }
-}
+  }
 
   // ====================================================================
   // 2. ĐĂNG KÝ TÀI KHOẢN MỚI (Tự nhập Email/Pass)
@@ -104,9 +108,9 @@ export class AuthService {
   // ====================================================================
   async verifyEmail(email: string, otpCode: string) {
     const user = await this.prisma.user.findFirst({
-      where: { 
-         email: email,
-         verifyToken: otpCode 
+      where: {
+        email: email,
+        verifyToken: otpCode
       },
     });
 
@@ -142,7 +146,7 @@ export class AuthService {
     if (!user) {
       const randomPassword = Math.random().toString(36).slice(-10);
       const hashedPassword = await bcrypt.hash(randomPassword, 10);
-      
+
       const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
       const verifyTokenExpires = new Date(Date.now() + 15 * 60 * 1000);
 
@@ -152,7 +156,7 @@ export class AuthService {
           name: dto.name,
           avatar: dto.avatar,
           password: hashedPassword,
-          role: 'USER', 
+          role: 'USER',
           status: 'Active',
           phoneNumber: '',
           isEmailVerified: false, // 👈 KHOÁ LẠI
@@ -165,8 +169,8 @@ export class AuthService {
 
       // Trả về cờ hiệu cho Frontend biết phải mở form nhập 6 số
       return { success: true, requiresVerification: true, email: user.email };
-    } 
-    
+    }
+
     // TRƯỜNG HỢP B: ĐÃ CÓ TÀI KHOẢN NHƯNG CHƯA TỪNG XÁC THỰC
     if (!user.isEmailVerified) {
       const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
@@ -195,10 +199,10 @@ export class AuthService {
       });
     }
 
-    const payload = { 
-      sub: user.id, 
-      email: user.email, 
-      role: user.role 
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role
     };
 
     const access_token = this.jwtService.sign(payload);
